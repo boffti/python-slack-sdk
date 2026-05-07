@@ -792,6 +792,7 @@ class TableBlock(Block):
 
 class TaskCardBlock(Block):
     type = "task_card"
+    valid_statuses = {"pending", "in_progress", "complete", "error"}
 
     @property
     def attributes(self) -> Set[str]:  # type: ignore[override]
@@ -803,6 +804,7 @@ class TaskCardBlock(Block):
                 "output",
                 "sources",
                 "status",
+                "expanded",
             }
         )
 
@@ -814,7 +816,8 @@ class TaskCardBlock(Block):
         details: Optional[Union[RichTextBlock, dict]] = None,
         output: Optional[Union[RichTextBlock, dict]] = None,
         sources: Optional[Sequence[Union[UrlSourceElement, dict]]] = None,
-        status: str,  # pending, in_progress, complete, error
+        status: Optional[str] = None,  # pending, in_progress, complete, error
+        expanded: Optional[bool] = None,
         block_id: Optional[str] = None,
         **others: dict,
     ):
@@ -832,6 +835,7 @@ class TaskCardBlock(Block):
             output: Output of the task in the form of a single "rich_text" entity.
             sources: Array of URL source elements used to generate a response.
             status: The state of a task. Either "pending", "in_progress", "complete", or "error".
+            expanded: Whether the task card is rendered in its expanded state.
         """
         super().__init__(type=self.type, block_id=block_id)
         show_unknown_key_warning(self, others)
@@ -842,10 +846,19 @@ class TaskCardBlock(Block):
         self.output = output
         self.sources = sources
         self.status = status
+        self.expanded = expanded
+
+    @JsonValidator("task_id must be a non-empty string")
+    def _validate_task_id(self):
+        return isinstance(self.task_id, str) and len(self.task_id) > 0
+
+    @JsonValidator("title must be a non-empty string")
+    def _validate_title(self):
+        return isinstance(self.title, str) and len(self.title) > 0
 
     @JsonValidator("status must be an expected value (pending, in_progress, complete, or error)")
-    def _validate_rows(self):
-        return self.status in ["pending", "in_progress", "complete", "error"]
+    def _validate_status(self):
+        return self.status is None or self.status in self.valid_statuses
 
 
 class PlanBlock(Block):
@@ -857,14 +870,16 @@ class PlanBlock(Block):
             {
                 "title",
                 "tasks",
+                "expanded",
             }
         )
 
     def __init__(
         self,
         *,
-        title: str,
         tasks: Optional[Sequence[Union[Dict, TaskCardBlock]]] = None,
+        title: Optional[str] = None,
+        expanded: Optional[bool] = None,
         block_id: Optional[str] = None,
         **others: dict,
     ):
@@ -876,14 +891,20 @@ class PlanBlock(Block):
                 Maximum length for this field is 255 characters.
                 block_id should be unique for each message and each iteration of a message.
                 If a message is updated, use a new block_id.
-            title (required): Title of the plan in plain text
-            tasks: A sequence of task card blocks. Each task represents a single action within the plan.
+            tasks (required): A sequence of task card blocks. Each task represents a single action within the plan.
+            title: Optional title of the plan in plain text.
+            expanded: Whether the plan is rendered in its expanded state.
         """
         super().__init__(type=self.type, block_id=block_id)
         show_unknown_key_warning(self, others)
 
         self.title = title
         self.tasks = tasks
+        self.expanded = expanded
+
+    @JsonValidator("tasks must be a non-empty sequence of task card blocks")
+    def _validate_tasks(self):
+        return self.tasks is not None and len(self.tasks) > 0
 
 
 class AlertBlock(Block):
