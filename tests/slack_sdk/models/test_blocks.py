@@ -944,6 +944,60 @@ class PlanBlockTests(unittest.TestCase):
         self.assertDictEqual(input, PlanBlock(**input).to_dict())
         self.assertDictEqual(input, Block.parse(input).to_dict())
 
+    def test_minimal_with_task_card_instance(self):
+        block = PlanBlock(tasks=[TaskCardBlock(task_id="t1", title="Do work")])
+        self.assertDictEqual(
+            {
+                "type": "plan",
+                "tasks": [{"type": "task_card", "task_id": "t1", "title": "Do work"}],
+            },
+            block.to_dict(),
+        )
+
+    def test_mixed_dict_and_model_tasks(self):
+        block = PlanBlock(
+            tasks=[
+                {"type": "task_card", "task_id": "t1", "title": "From dict"},
+                TaskCardBlock(task_id="t2", title="From model", status="complete"),
+            ],
+        )
+        self.assertDictEqual(
+            {
+                "type": "plan",
+                "tasks": [
+                    {"type": "task_card", "task_id": "t1", "title": "From dict"},
+                    {
+                        "type": "task_card",
+                        "task_id": "t2",
+                        "title": "From model",
+                        "status": "complete",
+                    },
+                ],
+            },
+            block.to_dict(),
+        )
+
+    def test_explicit_expanded_true(self):
+        block = PlanBlock(
+            tasks=[TaskCardBlock(task_id="t1", title="Do work")],
+            expanded=True,
+        )
+        result = block.to_dict()
+        self.assertEqual("plan", result["type"])
+        self.assertEqual(True, result["expanded"])
+        self.assertEqual(
+            [{"type": "task_card", "task_id": "t1", "title": "Do work"}],
+            result["tasks"],
+        )
+
+    def test_empty_tasks_raises(self):
+        with self.assertRaises(SlackObjectFormationError):
+            PlanBlock(tasks=[]).to_dict()
+
+    def test_missing_tasks_raises(self):
+        with self.assertRaises(SlackObjectFormationError):
+            PlanBlock().to_dict()
+
 
 # ----------------------------------------------
 # Task card
@@ -973,6 +1027,100 @@ class TaskCardBlockTests(unittest.TestCase):
         }
         self.assertDictEqual(input, TaskCardBlock(**input).to_dict())
         self.assertDictEqual(input, Block.parse(input).to_dict())
+
+    def test_minimal_no_extra_keys(self):
+        self.assertDictEqual(
+            {"type": "task_card", "task_id": "t1", "title": "Do work"},
+            TaskCardBlock(task_id="t1", title="Do work").to_dict(),
+        )
+
+    def test_all_fields_expanded_true(self):
+        input = {
+            "type": "task_card",
+            "task_id": "t1",
+            "title": "Do work",
+            "status": "in_progress",
+            "details": {
+                "type": "rich_text",
+                "elements": [
+                    {"type": "rich_text_section", "elements": [{"type": "text", "text": "Working on it"}]}
+                ],
+            },
+            "output": {
+                "type": "rich_text",
+                "elements": [
+                    {"type": "rich_text_section", "elements": [{"type": "text", "text": "Done"}]}
+                ],
+            },
+            "sources": [
+                {"type": "url", "url": "https://example.com/", "text": "example.com"},
+            ],
+            "expanded": True,
+        }
+        self.assertDictEqual(input, TaskCardBlock(**input).to_dict())
+
+    def test_all_fields_expanded_false(self):
+        input = {
+            "type": "task_card",
+            "task_id": "t1",
+            "title": "Do work",
+            "status": "complete",
+            "details": {
+                "type": "rich_text",
+                "elements": [
+                    {"type": "rich_text_section", "elements": [{"type": "text", "text": "Detail"}]}
+                ],
+            },
+            "output": {
+                "type": "rich_text",
+                "elements": [
+                    {"type": "rich_text_section", "elements": [{"type": "text", "text": "Out"}]}
+                ],
+            },
+            "sources": [
+                {"type": "url", "url": "https://example.com/", "text": "example.com"},
+            ],
+            "expanded": False,
+        }
+        self.assertDictEqual(input, TaskCardBlock(**input).to_dict())
+
+    def test_details_and_output_as_rich_text_block(self):
+        details = RichTextBlock(
+            elements=[
+                RichTextSectionElement(elements=[RichTextElementParts.Text(text="Detail")]),
+            ],
+        )
+        output = RichTextBlock(
+            elements=[
+                RichTextSectionElement(elements=[RichTextElementParts.Text(text="Output")]),
+            ],
+        )
+        block = TaskCardBlock(task_id="t1", title="Do work", details=details, output=output)
+        result = block.to_dict()
+        self.assertEqual("rich_text", result["details"]["type"])
+        self.assertEqual("rich_text", result["output"]["type"])
+        self.assertEqual(details.to_dict(), result["details"])
+        self.assertEqual(output.to_dict(), result["output"])
+
+    def test_invalid_status_raises(self):
+        with self.assertRaises(SlackObjectFormationError):
+            TaskCardBlock(task_id="t1", title="Do work", status="unknown_status").to_dict()
+
+    def test_empty_task_id_raises(self):
+        with self.assertRaises(SlackObjectFormationError):
+            TaskCardBlock(task_id="", title="Do work").to_dict()
+
+    def test_missing_task_id_raises(self):
+        with self.assertRaises(SlackObjectFormationError):
+            TaskCardBlock(task_id=None, title="Do work").to_dict()
+
+    def test_empty_title_raises(self):
+        with self.assertRaises(SlackObjectFormationError):
+            TaskCardBlock(task_id="t1", title="").to_dict()
+
+    def test_missing_title_raises(self):
+        with self.assertRaises(SlackObjectFormationError):
+            TaskCardBlock(task_id="t1", title=None).to_dict()
 
 
 # ----------------------------------------------
